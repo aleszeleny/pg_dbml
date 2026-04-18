@@ -29,7 +29,7 @@ The easiest and most reliable way to install `pg_dbml` is using Homebrew. This a
 
 ```bash
 # Install the tool
-brew install heptau/tap/pg_dbml
+brew install heptau/tap/pg-dbml
 ```
 
 ### Option B: Manual Installation
