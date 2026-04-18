@@ -1,0 +1,14 @@
+# OS specifics
+Thumbs.db
+*.DS_Store
+*.lock
+
+# build directories and artifacts
+dist/
+*.tar.gz
+
+# dbml files
+*.dbml
+
+# Development references
+.references

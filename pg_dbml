@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+# =============================================================================
+# pg_dbml - PostgreSQL → DBML exporter (pure SQL, sorted by schema.table)
+# =============================================================================
+
+VERSION="1.0.0"
+
+if [[ "$1" == "--version" || "$1" == "-v" ]]; then
+	echo "$VERSION"
+	exit 0
+fi
+
+usage() {
+	cat << EOF
+Usage: pg_dbml [OPTIONS] [DBNAME]
+	 or: pg_dbml postgresql://[user[:password]@][host][:port][/dbname]
+
+Parameters:
+	-h, --host HOST      Host (default: localhost)
+	-p, --port PORT      Port (default: 5432)
+	-U, --user USER      User (default: postgres)
+	-d, --dbname DBNAME  Database name
+	-o, --output FILE    Output file (default: DBNAME.dbml)
+	-v, --version        Show script version
+	--help               This help
+
+Examples:
+	pg_dbml -d mydb
+	pg_dbml postgresql://postgres@localhost:5432/mydb
+EOF
+}
+
+# Default connection and config values
+HOST="localhost"
+PORT="5432"
+USER="postgres"
+DBNAME=""
+OUTPUT=""
+CONNSTR=""
+
+while [[ $# -gt 0 ]]; do
+	case $1 in
+		-h|--host)      HOST="$2"; shift 2 ;;
+		-p|--port)      PORT="$2"; shift 2 ;;
+		-U|--user)      USER="$2"; shift 2 ;;
+		-d|--dbname)    DBNAME="$2"; shift 2 ;;
+		-o|--output)    OUTPUT="$2"; shift 2 ;;
+		-v|--version)   echo "$VERSION"; exit 0 ;;
+		--help)         usage; exit 0 ;;
+		postgresql://*) CONNSTR="$1"; shift ;;
+		*)              DBNAME="${DBNAME:-$1}"; shift ;;
+	esac
+done
+
+if [[ -z "$CONNSTR" && -z "$DBNAME" ]]; then
+	usage
+	exit 1
+fi
+
+if [[ -n "$CONNSTR" && -z "$DBNAME" ]]; then
+	DBNAME=$(echo "$CONNSTR" | sed -E 's|^postgresql://[^/]+/([^/?]+).*$|\1|')
+fi
+
+if [[ -z "$DBNAME" ]]; then
+	echo "Error: Database name missing." >&2
+	usage
+	exit 1
+fi
+
+if [[ -z "$OUTPUT" ]]; then
+	OUTPUT="${DBNAME}.dbml"
+fi
+
+# ─────────────────────────────────────────────────────────────
+# Resolve and read the SQL query file
+# ─────────────────────────────────────────────────────────────
+# Path resolution priority:
+# 1. PG_DBML_SQL_PATH (Set by Homebrew wrapper during installation)
+# 2. Local fallback paths (For local development/execution)
+
+if [[ -n "${PG_DBML_SQL_PATH}" ]]; then
+	SQL_FILE="${PG_DBML_SQL_PATH}"
+else
+	if [[ -f "pg_dbml.sql" ]]; then
+		SQL_FILE="pg_dbml.sql"
+	elif [[ -f "sql/pg_dbml.sql" ]]; then
+		SQL_FILE="sql/pg_dbml.sql"
+	elif [[ -f "$(dirname "$0")/pg_dbml.sql" ]]; then
+		SQL_FILE="$(dirname "$0")/pg_dbml.sql"
+	else
+		echo "Error: pg_dbml.sql file not found!" >&2
+		echo "Please place it in the same directory, 'sql/' subdirectory, or use the Homebrew installation." >&2
+		exit 1
+	fi
+fi
+
+SQL=$(cat "$SQL_FILE")
+
+# Execute query
+if [[ -n "$CONNSTR" ]]; then
+	psql "$CONNSTR" --tuples-only --no-align --quiet -c "$SQL" > "$OUTPUT"
+else
+	psql -h "$HOST" -p "$PORT" -U "$USER" -d "$DBNAME" \
+			 --tuples-only --no-align --quiet -c "$SQL" > "$OUTPUT"
+fi
+
+echo "✅ DBML generated → $OUTPUT"
